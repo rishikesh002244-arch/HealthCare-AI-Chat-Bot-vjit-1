@@ -1,0 +1,315 @@
+import os
+os.chdir(r'c:\Users\rishi\OneDrive\Desktop\health\healthcare-chatbot')
+
+import streamlit as st
+import pandas as pd
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import train_test_split
+import numpy as np
+import pickle
+import requests
+import json
+import re
+
+# Load saved data
+with open('models.pkl', 'rb') as f:
+    clf, model, le, cols, reduced_data, description_list, precautionDictionary, severityDictionary = pickle.load(f)
+
+symptoms = list(cols)
+
+# ── Disease-specific home remedies & precautions ─────────────────────────
+DISEASE_REMEDIES = {
+    "Fungal infection": ["Apply tea tree oil diluted with coconut oil to affected areas", "Keep the infected area clean and dry at all times", "Use antifungal powders in moisture-prone areas", "Wear loose cotton clothing to allow air circulation", "Apply raw garlic paste for its antifungal properties"],
+    "Allergy": ["Use a saline nasal rinse to flush allergens", "Apply cold compress to reduce swelling and itching", "Drink nettle leaf tea as a natural antihistamine", "Use HEPA air purifiers indoors", "Apply aloe vera gel to skin reactions"],
+    "GERD": ["Drink aloe vera juice before meals", "Chew sugar-free gum after eating to increase saliva", "Sleep with head elevated 6-8 inches", "Drink ginger tea 20 minutes before meals", "Eat smaller meals more frequently throughout the day"],
+    "Chronic cholestasis": ["Take milk thistle supplements for liver support", "Apply menthol cream for itching relief", "Use cholestyramine as prescribed for bile acid binding", "Consume turmeric with black pepper for liver health", "Take lukewarm oatmeal baths to soothe itchy skin"],
+    "Drug Reaction": ["Stop the suspected medication immediately and note its name", "Take an antihistamine like diphenhydramine for mild reactions", "Apply hydrocortisone cream for skin rashes", "Use cool compresses on affected skin areas", "Document all symptoms with photos and timestamps for your doctor"],
+    "Peptic ulcer diseae": ["Drink cabbage juice daily which contains vitamin U for ulcer healing", "Take licorice root (DGL form) before meals", "Consume raw honey which has antibacterial properties", "Drink chamomile tea to reduce stomach inflammation", "Eat probiotic-rich foods like yogurt to fight H. pylori"],
+    "AIDS": ["Follow antiretroviral therapy strictly as prescribed", "Practice safe sex consistently", "Eat high-protein foods to maintain muscle mass", "Take multivitamins especially zinc and selenium", "Practice stress-reduction techniques to support immune function"],
+    "Diabetes ": ["Drink bitter gourd juice on empty stomach", "Consume fenugreek seeds soaked overnight in water", "Take cinnamon supplements to improve insulin sensitivity", "Walk for 30 minutes after each meal to control blood sugar spikes", "Eat foods with low glycemic index like oats, lentils, and leafy greens"],
+    "Gastroenteritis": ["Drink oral rehydration solution (ORS) frequently in small sips", "Follow the BRAT diet: bananas, rice, applesauce, toast", "Sip on clear broths to replenish electrolytes", "Consume probiotics to restore gut flora", "Drink peppermint tea to ease nausea and cramping"],
+    "Bronchial Asthma": ["Use a peak flow meter daily to monitor lung function", "Practice pursed-lip breathing during attacks", "Inhale steam with eucalyptus oil for bronchodilation", "Drink warm turmeric milk as an anti-inflammatory", "Identify and eliminate specific triggers from your environment"],
+    "Hypertension ": ["Practice deep breathing exercises for 10 minutes daily", "Consume garlic cloves daily to lower blood pressure naturally", "Drink hibiscus tea which has proven BP-lowering effects", "Reduce sodium intake to under 1500mg per day", "Eat potassium-rich foods like bananas, spinach, and sweet potatoes"],
+    "Migraine": ["Apply peppermint oil to temples at onset", "Use an ice pack on the back of the neck for 15 minutes", "Take magnesium supplements (400mg daily) for prevention", "Practice progressive muscle relaxation technique", "Drink strong ginger tea at the first sign of aura or pain"],
+    "Cervical spondylosis": ["Do gentle neck rotation exercises 3 times daily", "Apply warm sesame oil and massage the neck area", "Use a cervical pillow that supports the natural curve", "Practice chin tuck exercises to strengthen neck muscles", "Apply alternating hot and cold packs for 15 minutes each"],
+    "Paralysis (brain hemorrhage)": ["Follow prescribed physical therapy exercises daily", "Use assistive devices for safe mobility", "Practice speech therapy exercises if speech is affected", "Ensure home is fall-proofed with grab bars and non-slip mats", "Maintain blood pressure within prescribed range strictly"],
+    "Jaundice": ["Drink sugarcane juice to strengthen liver function", "Consume radish leaves juice on empty stomach", "Eat papaya and mango to support liver recovery", "Drink barley water to flush out toxins", "Take sunlight exposure for 15 minutes daily for bilirubin breakdown"],
+    "Malaria": ["Drink plenty of fluids to prevent dehydration from fever", "Use cold sponging to bring down high fever", "Drink ginger and lemon tea for nausea relief", "Eat easily digestible foods like khichdi and porridge", "Use mosquito nets and repellents to prevent reinfection"],
+    "Chicken pox": ["Apply calamine lotion to blisters to reduce itching", "Take oatmeal baths to soothe irritated skin", "Apply neem leaf paste on rashes for antiviral effect", "Keep fingernails trimmed short to prevent scratching", "Use baking soda baths to relieve severe itching"],
+    "Dengue": ["Drink papaya leaf extract to boost platelet count", "Stay fully hydrated with ORS, coconut water, and clear fluids", "Consume kiwi and pomegranate juice for platelet recovery", "Apply ice packs for joint and muscle pain relief", "Monitor platelet count daily through blood tests"],
+    "Typhoid": ["Drink boiled and cooled water only", "Eat high-calorie soft foods like mashed potatoes and custard", "Drink apple cider vinegar mixed with honey and water", "Use cold compresses for managing high fever", "Consume basil leaf tea for its antibacterial properties"],
+    "hepatitis A": ["Rest completely and avoid physical exertion", "Drink plenty of water and fresh fruit juices", "Eat light, low-fat meals with high carbohydrates", "Avoid alcohol completely during and after recovery", "Practice strict hand hygiene after using the restroom"],
+    "Hepatitis B": ["Follow antiviral therapy as prescribed strictly", "Avoid alcohol and hepatotoxic medications entirely", "Eat cruciferous vegetables like broccoli for liver support", "Get adequate rest and avoid strenuous activities", "Take regular liver function blood tests as scheduled"],
+    "Hepatitis C": ["Adhere to prescribed direct-acting antiviral treatment", "Avoid alcohol and recreational drugs completely", "Eat a balanced diet rich in fruits, vegetables, and lean protein", "Drink coffee which has shown liver-protective benefits", "Avoid sharing personal items like razors or toothbrushes"],
+    "Hepatitis D": ["Continue hepatitis B treatment as HDV requires HBV to replicate", "Take pegylated interferon as prescribed", "Maintain a liver-friendly diet low in saturated fats", "Avoid all alcohol and liver-toxic substances", "Get regular liver imaging and blood tests"],
+    "Hepatitis E": ["Rest and let the body recover naturally", "Stay well hydrated with clean boiled water", "Eat simple, easily digestible foods", "Avoid raw or undercooked meat and shellfish", "Avoid all alcohol during recovery period"],
+    "Alcoholic hepatitis": ["Stop all alcohol consumption immediately and permanently", "Take prescribed corticosteroids or pentoxifylline", "Eat a high-calorie, high-protein diet to combat malnutrition", "Take vitamin B-complex and folate supplements", "Join a support group or counseling for alcohol cessation"],
+    "Tuberculosis": ["Complete the full course of antibiotics (6-9 months minimum)", "Wear a mask in public to prevent spreading", "Eat protein-rich foods like eggs, fish, and lentils", "Get adequate sunlight exposure for vitamin D", "Ensure proper ventilation in living spaces"],
+    "Common Cold": ["Drink warm honey-lemon water for throat soothing", "Inhale steam with a few drops of eucalyptus oil", "Gargle with warm salt water for sore throat", "Take zinc lozenges within 24 hours of symptom onset", "Drink hot chicken soup which reduces nasal congestion"],
+    "Pneumonia": ["Do deep breathing exercises and incentive spirometry", "Stay hydrated with warm fluids to loosen mucus", "Use a cool-mist humidifier in your room", "Rest in a semi-upright position for easier breathing", "Complete all prescribed antibiotics even if feeling better"],
+    "Dimorphic hemmorhoids(piles)": ["Apply witch hazel soaked cotton pads to the affected area", "Take warm sitz baths for 15-20 minutes 2-3 times daily", "Apply coconut oil to reduce inflammation and pain", "Use a donut-shaped cushion when sitting for long periods", "Eat high-fiber foods like psyllium husk, oats, and prunes"],
+    "Heart attack": ["Call emergency services (ambulance) immediately", "Chew an aspirin tablet (325mg) while waiting for help", "Lie down and keep calm to reduce heart workload", "Loosen tight clothing around chest and neck", "Do not drive yourself to the hospital"],
+    "Varicose veins": ["Elevate legs above heart level for 15 minutes 3 times daily", "Wear graduated compression stockings during the day", "Do ankle rotation and calf raise exercises hourly", "Apply apple cider vinegar topically and consume it diluted", "Avoid sitting or standing in one position for over 30 minutes"],
+    "Hypothyroidism": ["Take selenium-rich Brazil nuts (2-3 daily) for thyroid support", "Consume iodine-rich foods like seaweed and iodized salt", "Exercise moderately for 30 minutes daily to boost metabolism", "Avoid soy products that can interfere with thyroid medication", "Take levothyroxine on empty stomach 30-60 min before food"],
+    "Hyperthyroidism": ["Eat anti-inflammatory foods like berries and fatty fish", "Apply lemon balm tea compresses on the thyroid area", "Practice calming yoga poses to reduce anxiety and tremors", "Consume cruciferous vegetables which may slow thyroid hormone", "Avoid caffeine and stimulants that worsen symptoms"],
+    "Urinary tract infection": ["Drink 8-10 glasses of water daily to flush bacteria", "Drink unsweetened cranberry juice to prevent bacterial adhesion", "Take D-mannose supplements as a natural antibacterial", "Urinate immediately after sexual intercourse", "Apply a warm heating pad to the lower abdomen for pain"],
+    "Acne": ["Apply tea tree oil (5% dilution) as a spot treatment", "Use non-comedogenic products labeled oil-free", "Apply raw honey masks for antibacterial and healing effects", "Wash face only twice daily with gentle salicylic acid cleanser", "Change pillowcases every 2-3 days to reduce bacterial transfer"],
+    "Psoriasis": ["Apply thick emollients like shea butter immediately after bathing", "Take dead sea salt baths to reduce scaling", "Get controlled UV light exposure (phototherapy)", "Apply aloe vera gel directly to plaques for soothing", "Use coal tar-based shampoo for scalp psoriasis"],
+    "Impetigo": ["Soak crusted areas in warm water with white vinegar", "Apply prescribed mupirocin ointment to sores", "Cover sores with gauze bandages to prevent spreading", "Wash hands frequently with antibacterial soap", "Wash infected person's linens and towels separately in hot water"],
+    "Hypoglycemia": ["Consume 15g of fast-acting glucose (juice, glucose tabs) immediately", "Follow up with a complex carb + protein snack after 15 minutes", "Carry glucose tablets or candy at all times", "Eat small frequent meals every 3-4 hours to stabilize blood sugar", "Wear a medical alert bracelet for emergencies"],
+    "Osteoarthristis": ["Apply capsaicin cream to affected joints for pain relief", "Do low-impact exercises like swimming and cycling", "Use hot paraffin wax dips for hand and wrist joints", "Take glucosamine and chondroitin supplements", "Maintain healthy weight to reduce joint stress"],
+    "Arthritis": ["Apply turmeric paste (golden paste) to inflamed joints", "Do range-of-motion exercises daily in warm water", "Use omega-3 fish oil supplements (2-3g daily) to reduce inflammation", "Apply alternating hot and cold therapy to stiff joints", "Practice tai chi for gentle joint-friendly movement"],
+    "(vertigo) Paroymsal  Positional Vertigo": ["Perform the Epley maneuver to reposition inner ear crystals", "Sleep with head elevated on 2 pillows", "Avoid quick head movements especially looking up", "Practice Brandt-Daroff exercises twice daily", "Move slowly when getting out of bed - sit first, then stand"],
+}
+
+DISEASE_PRECAUTIONS = {
+    "Fungal infection": ["Avoid sharing towels, clothes, and personal items", "Keep skin folds dry using antifungal powder", "Wear breathable cotton socks and change daily", "Disinfect shoes and avoid walking barefoot in public areas", "Wash clothes and bedding in hot water during infection"],
+    "Allergy": ["Identify and document specific allergens through testing", "Keep windows closed during high pollen days", "Wash bedding weekly in hot water to kill dust mites", "Carry an epinephrine auto-injector if you have severe allergies", "Read food labels carefully for hidden allergens"],
+    "GERD": ["Do not eat within 3 hours of lying down", "Avoid trigger foods: citrus, tomato, chocolate, mint, caffeine", "Do not wear tight belts or clothing around the abdomen", "Quit smoking as it weakens the lower esophageal sphincter", "Maintain a food diary to identify personal triggers"],
+    "Drug Reaction": ["Inform all healthcare providers about the reaction", "Wear a medical alert bracelet listing drug allergies", "Keep a written record of all medications that caused reactions", "Always ask about drug ingredients before taking new medications", "Report adverse reactions to your national pharmacovigilance center"],
+    "Diabetes ": ["Monitor blood glucose levels at scheduled times daily", "Inspect feet daily for cuts, blisters, or sores", "Never skip meals especially if on insulin or sulfonylureas", "Keep a glucometer and testing strips accessible at all times", "Schedule regular eye and kidney function checkups"],
+    "Hypertension ": ["Monitor blood pressure at home twice daily and log readings", "Take prescribed medication at the same time every day", "Limit alcohol to no more than 1 drink per day", "Reduce caffeine intake and monitor its effect on BP", "Manage stress through meditation or counseling"],
+    "Migraine": ["Maintain a consistent sleep schedule even on weekends", "Keep a headache diary to identify trigger patterns", "Stay hydrated - dehydration is a common trigger", "Avoid bright flickering lights and loud environments", "Limit screen time and use blue-light filtering glasses"],
+    "Heart attack": ["Keep aspirin accessible and know the correct emergency dose", "Learn CPR and ensure family members know it too", "Do not ignore chest pain lasting more than 5 minutes", "Quit smoking and avoid secondhand smoke exposure", "Take prescribed statins and blood thinners without skipping"],
+    "Dengue": ["Eliminate standing water around your home to stop mosquito breeding", "Use mosquito repellent containing DEET or picaridin", "Wear long sleeves and pants during dawn and dusk", "Avoid aspirin and ibuprofen as they increase bleeding risk", "Report symptoms early - do not wait for platelet drop"],
+    "Typhoid": ["Drink only boiled or bottled water", "Wash hands with soap before eating and after using toilet", "Avoid street food and uncooked vegetables during outbreaks", "Get the typhoid vaccine before traveling to endemic areas", "Ensure food handlers maintain proper hygiene"],
+    "Malaria": ["Sleep under insecticide-treated mosquito nets", "Take prescribed prophylactic antimalarials when traveling", "Use DEET-based repellents on exposed skin", "Wear long-sleeved clothing in the evening", "Seek immediate medical attention for fever after travel to endemic areas"],
+    "Common Cold": ["Wash hands frequently for at least 20 seconds", "Avoid touching eyes, nose, and mouth with unwashed hands", "Dispose of used tissues immediately and wash hands after", "Stay home during the first 2-3 days when most contagious", "Disinfect commonly touched surfaces like doorknobs and phones"],
+    "Tuberculosis": ["Ensure directly observed therapy (DOT) compliance", "Ventilate rooms well and use UV germicidal lamps if possible", "Separate sputum collection and disposal safely", "Test household contacts for TB exposure", "Avoid crowded enclosed spaces during active infection"],
+    "Pneumonia": ["Get annual influenza and pneumococcal vaccines", "Practice deep breathing exercises to keep lungs clear", "Do not suppress cough as it helps clear infection", "Avoid smoking and secondhand smoke exposure", "Seek immediate care if breathing difficulty worsens"],
+    "Jaundice": ["Avoid alcohol completely until liver function normalizes", "Do not take over-the-counter medications without doctor approval", "Maintain strict hygiene to prevent hepatitis transmission", "Get tested for underlying causes like hepatitis or gallstones", "Monitor bilirubin levels through regular blood tests"],
+    "Chicken pox": ["Isolate infected person until all blisters have crusted over", "Avoid contact with pregnant women and immunocompromised people", "Do not give aspirin to children due to Reye's syndrome risk", "Wash hands after touching blisters to prevent bacterial infection", "Get varicella vaccine for unvaccinated household members"],
+    "Bronchial Asthma": ["Always carry rescue inhaler with you", "Create an asthma action plan with your doctor", "Avoid known triggers: dust, smoke, pet dander, cold air", "Use spacer devices with inhalers for better medication delivery", "Get annual flu vaccine as respiratory infections worsen asthma"],
+    "Urinary tract infection": ["Wipe from front to back after using the toilet", "Avoid using irritating feminine products like douches or sprays", "Wear cotton underwear and avoid tight-fitting pants", "Do not hold urine for extended periods", "Avoid bubble baths and harsh soaps in the genital area"],
+    "Acne": ["Do not pick, squeeze, or pop pimples to prevent scarring", "Avoid touching your face throughout the day", "Remove makeup completely before sleeping", "Clean phone screens regularly as they touch your face", "Avoid excessive sun exposure which can worsen post-acne marks"],
+    "Varicose veins": ["Avoid crossing legs while sitting", "Do not stand or sit for more than 30 minutes continuously", "Elevate legs whenever resting or sleeping", "Avoid high heels which reduce calf muscle pump effectiveness", "Exercise regularly focusing on walking and swimming"],
+    "Hypoglycemia": ["Never skip meals or go more than 4 hours without eating", "Always carry fast-acting sugar sources", "Inform coworkers and family about signs of low blood sugar", "Do not exercise on an empty stomach", "Check blood sugar before driving"],
+    "AIDS": ["Take antiretroviral medications at the exact prescribed times", "Disclose HIV status to sexual partners", "Avoid sharing needles, razors, or toothbrushes", "Get regular CD4 count and viral load monitoring", "Stay current on all recommended vaccinations"],
+    "Hepatitis B": ["Do not share personal items that may have blood on them", "Ensure sexual partners are vaccinated", "Avoid alcohol which accelerates liver damage", "Get regular liver cancer screening with ultrasound", "Inform healthcare providers before any procedures"],
+    "Hepatitis C": ["Never share needles or drug paraphernalia", "Cover open wounds and dispose of blood-stained items safely", "Do not donate blood, organs, or tissue", "Avoid alcohol which worsens liver fibrosis", "Get tested for hepatitis C if you had blood transfusion before 1992"],
+    "Chronic cholestasis": ["Avoid scratching itchy skin to prevent secondary infection", "Take prescribed ursodeoxycholic acid consistently", "Monitor liver function tests every 3 months", "Avoid hepatotoxic drugs like acetaminophen in high doses", "Report any yellowing of skin or eyes immediately"],
+    "Peptic ulcer diseae": ["Avoid NSAIDs like ibuprofen and aspirin completely", "Do not smoke as it delays ulcer healing", "Eat meals at regular intervals and do not skip meals", "Limit alcohol as it irritates the stomach lining", "Complete full H. pylori antibiotic course if prescribed"],
+    "Psoriasis": ["Moisturize skin immediately after bathing", "Avoid skin injuries, cuts, and sunburns which trigger flares", "Limit alcohol as it worsens psoriasis and interferes with treatment", "Manage stress which is a major flare trigger", "Do not pick or scratch plaques to avoid Koebner phenomenon"],
+    "Hypothyroidism": ["Take thyroid medication at the same time daily on empty stomach", "Wait 4 hours before taking calcium or iron supplements", "Get TSH levels tested every 6-8 weeks when adjusting dose", "Do not switch between brand and generic without doctor approval", "Monitor for symptoms of over-replacement like rapid heartbeat"],
+    "Hyperthyroidism": ["Avoid iodine-rich foods and iodinated contrast dyes", "Monitor heart rate daily and report persistent tachycardia", "Protect eyes from dryness if Graves' disease is present", "Avoid vigorous exercise until thyroid levels normalize", "Take antithyroid medications exactly as prescribed"],
+    "Cervical spondylosis": ["Avoid carrying heavy loads on the head or shoulders", "Take regular breaks from screen work every 30 minutes", "Do not crack or forcefully twist the neck", "Use an ergonomic workstation setup with monitor at eye level", "Avoid sleeping on very high or very flat pillows"],
+    "Paralysis (brain hemorrhage)": ["Control blood pressure strictly within prescribed range", "Attend all physical and occupational therapy sessions", "Install safety rails in bathroom and along stairs", "Watch for signs of depression and seek mental health support", "Avoid falls by removing loose rugs and ensuring good lighting"],
+    "Jaundice": ["Avoid alcohol completely until bilirubin normalizes", "Do not take paracetamol or other liver-metabolized drugs", "Maintain strict hand hygiene if caused by hepatitis", "Get tested for underlying causes like gallstones or hepatitis", "Stay hydrated but avoid sugary drinks"],
+    "Alcoholic hepatitis": ["Abstain from all alcohol permanently - this is essential", "Enroll in alcohol rehabilitation or counseling program", "Avoid acetaminophen and other hepatotoxic medications", "Get vaccinated against hepatitis A and B", "Monitor for signs of liver failure like confusion or swelling"],
+    "Hepatitis D": ["Continue hepatitis B antiviral treatment consistently", "Avoid alcohol and hepatotoxic substances", "Do not share razors, needles, or toothbrushes", "Get regular liver ultrasound and alpha-fetoprotein tests", "Ensure household contacts are vaccinated against hepatitis B"],
+    "Hepatitis E": ["Drink only boiled or purified water", "Avoid raw or undercooked pork and shellfish", "Wash hands thoroughly after using the restroom", "Pregnant women should seek immediate medical care as HEV is dangerous in pregnancy", "Avoid alcohol during recovery period"],
+    "hepatitis A": ["Practice strict hand washing with soap after restroom use", "Avoid preparing food for others during acute infection", "Get vaccinated if traveling to endemic areas", "Avoid alcohol during and for 6 months after recovery", "Disinfect contaminated surfaces with bleach solution"],
+    "Osteoarthristis": ["Avoid high-impact activities like running and jumping", "Use assistive devices like canes to reduce joint load", "Maintain healthy weight as every pound adds 4 pounds of knee stress", "Avoid prolonged kneeling or squatting", "Use handrails on stairs and grab bars in bathrooms"],
+    "(vertigo) Paroymsal  Positional Vertigo": ["Avoid lying flat - sleep slightly propped up", "Move slowly when changing positions especially in the morning", "Avoid tilting head far back like at the dentist or hair salon", "Do not bend over to pick things up - squat instead", "Avoid amusement park rides and activities with rapid head movement"],
+    "Impetigo": ["Keep infected person's items separate from family members", "Do not send children to school until 24 hours after starting antibiotics", "Cut fingernails short to prevent scratching and spreading", "Wash all towels, linens, and clothes in hot water separately", "Cover sores with waterproof bandages"],
+    "Gastroenteritis": ["Practice strict hand washing especially before eating", "Disinfect bathroom surfaces frequently during illness", "Do not prepare food for others while symptomatic", "Stay home for 48 hours after symptoms resolve", "Replace lost fluids with ORS not just plain water"],
+    "Arthritis": ["Protect joints from repetitive stress and overuse", "Balance activity with rest - avoid overdoing on good days", "Use ergonomic tools and jar openers to reduce hand strain", "Keep joints warm in cold weather which worsens stiffness", "Maintain healthy weight to reduce load on weight-bearing joints"],
+    "Dimorphic hemmorhoids(piles)": ["Avoid straining during bowel movements", "Do not sit on the toilet for extended periods", "Respond to urge to defecate promptly - do not delay", "Avoid heavy lifting which increases abdominal pressure", "Keep anal area clean with gentle unscented wipes"],
+    "Heart attack": ["Take all prescribed medications daily without skipping", "Attend cardiac rehabilitation program after discharge", "Learn to recognize warning signs: chest pain, jaw pain, arm numbness", "Keep emergency numbers and aspirin accessible at all times", "Quit smoking and avoid secondhand smoke permanently"],
+    "Pneumonia": ["Get pneumococcal and annual influenza vaccines", "Do not suppress productive cough - it clears the infection", "Complete entire antibiotic course even if feeling better", "Practice deep breathing exercises to prevent complications", "Avoid smoking which impairs lung healing"],
+    "Tuberculosis": ["Take all medications for the full 6-9 month course without stopping", "Use directly observed therapy (DOT) if available", "Cover mouth when coughing and dispose of tissues safely", "Ensure good ventilation in living and working spaces", "Get tested contacts treated for latent TB infection"],
+    "Varicose veins": ["Avoid prolonged standing or sitting in one position", "Wear compression stockings as prescribed during the day", "Elevate legs above heart level when resting", "Exercise regularly - walking and swimming are ideal", "Avoid tight clothing around the waist and legs"],
+}
+
+# ── Web search for disease-specific info ────────────────────────────────
+SEARCH_NAME_MAP = {
+    "GERD": "Gastroesophageal reflux disease",
+    "(vertigo) Paroymsal  Positional Vertigo": "Benign paroxysmal positional vertigo",
+    "Dimorphic hemmorhoids(piles)": "Hemorrhoids",
+    "Peptic ulcer diseae": "Peptic ulcer disease",
+    "Osteoarthristis": "Osteoarthritis",
+    "hepatitis A": "Hepatitis A",
+    "Diabetes ": "Diabetes mellitus",
+    "Hypertension ": "Hypertension",
+    "Chicken pox": "Chickenpox",
+    "Paralysis (brain hemorrhage)": "Intracerebral hemorrhage",
+    "Bronchial Asthma": "Asthma",
+    "Drug Reaction": "Adverse drug reaction",
+    "Dimorphic hemmorhoids(piles)": "Hemorrhoids piles",
+}
+
+
+def _clean_name(name):
+    return SEARCH_NAME_MAP.get(name, name.strip())
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_web_info(disease_name):
+    """Fetch info from Wikipedia + DuckDuckGo for verification."""
+    results = []
+    clean = _clean_name(disease_name)
+
+    # Wikipedia
+    try:
+        url = "https://en.wikipedia.org/api/rest_v1/page/summary/" + requests.utils.quote(clean)
+        r = requests.get(url, timeout=5, headers={"User-Agent": "HealthChatBot/1.0"})
+        if r.status_code == 200:
+            d = r.json()
+            ext = d.get("extract", "")
+            if ext and len(ext) > 50:
+                results.append({
+                    "source": "Wikipedia",
+                    "text": ext[:600],
+                    "url": d.get("content_urls", {}).get("desktop", {}).get("page", "")
+                })
+    except Exception:
+        pass
+
+    # DuckDuckGo instant answer
+    for query in [f"{clean} treatment home remedies", f"{clean} prevention precautions"]:
+        try:
+            r = requests.get("https://api.duckduckgo.com/",
+                             params={"q": query, "format": "json", "no_html": 1},
+                             timeout=5, headers={"User-Agent": "HealthChatBot/1.0"})
+            if r.status_code == 200:
+                d = r.json()
+                if d.get("Abstract"):
+                    text = d["Abstract"][:500]
+                    if not any(text[:80] == x["text"][:80] for x in results):
+                        results.append({
+                            "source": d.get("AbstractSource", "Web"),
+                            "text": text,
+                            "url": d.get("AbstractURL", "")
+                        })
+        except Exception:
+            pass
+
+    return results
+
+
+# ── Prediction function ──────────────────────────────────────────────────
+def sec_predict(symptoms_exp):
+    df = pd.read_csv('Data/Training.csv')
+    X = df.iloc[:, :-1]
+    y = df['prognosis']
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=20)
+    rf_clf = DecisionTreeClassifier()
+    rf_clf.fit(X_train, y_train)
+
+    symptoms_dict = {symptom: index for index, symptom in enumerate(X)}
+    input_vector = np.zeros(len(symptoms_dict))
+    for item in symptoms_exp:
+        if item in symptoms_dict:
+            input_vector[symptoms_dict[item]] = 1
+
+    return rf_clf.predict([input_vector])[0]
+
+
+# ── Streamlit UI ─────────────────────────────────────────────────────────
+st.set_page_config(page_title="Healthcare ChatBot", page_icon="🏥", layout="wide")
+
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+    
+    * { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important; }
+    
+    /* Main Background */
+    .stApp { background-color: #000000; color: #FAFAFA; }
+    
+    /* Container Width */
+    .block-container { max-width: 600px; padding-top: 2rem; }
+    
+    /* Headers */
+    h1 { color: #FAFAFA !important; font-weight: 600 !important; font-size: 24px !important; border-bottom: 1px solid #262626; padding-bottom: 12px; margin-bottom: 20px !important; }
+    h3 { color: #FAFAFA !important; font-weight: 600 !important; font-size: 16px !important; margin-top: 1.5rem; margin-bottom: 12px !important; }
+    
+    /* Cards (Remedies, Precautions) */
+    .remedy-card, .precaution-card, .web-card {
+        background-color: #000000;
+        border: 1px solid #363636;
+        padding: 14px 16px; 
+        margin: -1px 0 0 0; /* overlap borders */
+        color: #FAFAFA;
+        font-size: 14px;
+        line-height: 18px;
+    }
+    
+    /* First and last card rounding to mimic list */
+    .remedy-card:first-of-type, .precaution-card:first-of-type { border-top-left-radius: 8px; border-top-right-radius: 8px; }
+    .remedy-card:last-of-type, .precaution-card:last-of-type { border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }
+    
+    /* Source Tag */
+    .source-tag { color: #A8A8A8; font-weight: 400; font-size: 12px; }
+    
+    /* Buttons */
+    div.stButton > button:first-child {
+        background-color: #0095F6;
+        color: #FFFFFF;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        padding: 6px 16px;
+        width: 100%;
+        margin-top: 10px;
+    }
+    div.stButton > button:first-child:hover { background-color: #1877F2; color: #FFFFFF; }
+    
+    /* MultiSelect */
+    div[data-baseweb="select"] > div {
+        background-color: #121212 !important;
+        border: 1px solid #363636 !important;
+        border-radius: 8px !important;
+    }
+    .st-bb { background-color: transparent !important; } /* tags */
+    span[data-baseweb="tag"] { background-color: #262626 !important; color: #FAFAFA !important; border: none !important; }
+    
+    /* Caption */
+    .stCaption { color: #A8A8A8 !important; }
+</style>
+""", unsafe_allow_html=True)
+
+st.title("🏥 Healthcare ChatBot")
+st.caption("AI-powered symptom analysis with web-verified medical information")
+
+st.write("**Select the symptoms you are experiencing:**")
+selected_symptoms = st.multiselect("Symptoms", symptoms, label_visibility="collapsed")
+
+if st.button("🔍 Diagnose", type="primary"):
+    if not selected_symptoms:
+        st.warning("Please select at least one symptom.")
+    else:
+        with st.spinner("Analyzing symptoms..."):
+            prediction = sec_predict(selected_symptoms)
+
+
+
+        col1, col2 = st.columns(2)
+
+        # ── Precautions ──
+        with col1:
+            st.markdown("### ⚠️ Precautions")
+            precs = DISEASE_PRECAUTIONS.get(prediction, [])
+            if not precs and prediction in precautionDictionary:
+                precs = [p for p in precautionDictionary[prediction] if p.strip()]
+            if precs:
+                for p in precs:
+                    st.markdown(f'<div class="precaution-card">• {p}</div>', unsafe_allow_html=True)
+            else:
+                # Fallback to CSV precautions
+                if prediction in precautionDictionary:
+                    for p in precautionDictionary[prediction]:
+                        if p.strip():
+                            st.markdown(f'<div class="precaution-card">• {p}</div>', unsafe_allow_html=True)
+
+        # ── Home Remedies ──
+        with col2:
+            st.markdown("### 🏠 Home Remedies")
+            remedies = DISEASE_REMEDIES.get(prediction, [])
+            if remedies:
+                for r in remedies:
+                    st.markdown(f'<div class="remedy-card">• {r}</div>', unsafe_allow_html=True)
+            else:
+                st.info(f"Searching web for {prediction}-specific home remedies...")
+
+
+
+        # ── Mandatory Disclaimer ──
+        st.markdown("---")
+        st.error(
+            "**⚕️ Important Medical Disclaimer:** This chatbot provides general information "
+            "based on symptoms and is NOT a substitute for professional medical advice. "
+            "Always consult a qualified doctor or healthcare professional. "
+            "A doctor's appointment is mandatory for accurate diagnosis and treatment. "
+            "Do not self-medicate."
+        )
