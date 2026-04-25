@@ -1,5 +1,10 @@
 import os
-os.chdir(r'c:\Users\rishi\OneDrive\Desktop\health\healthcare-chatbot')
+import sys
+
+base_dir = os.path.dirname(os.path.abspath(__file__))
+target_dir = os.path.join(base_dir, 'healthcare-chatbot')
+if os.path.exists(target_dir):
+    os.chdir(target_dir)
 
 import streamlit as st
 import pandas as pd

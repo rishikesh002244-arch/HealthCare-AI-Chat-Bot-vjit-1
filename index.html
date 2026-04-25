@@ -54,10 +54,12 @@
     <iframe id="app-frame" allow="microphone; camera; geolocation"></iframe>
 
     <script>
-        // Placeholder for future iframe integration
-        // document.getElementById('app-frame').src = "STREAMLIT_URL_HERE";
-        // document.getElementById('app-frame').style.display = "block";
-        // document.getElementById('loading').style.display = "none";
+        // Load the actual Streamlit app seamlessly into the iframe
+        document.getElementById('app-frame').src = "https://healthcare-ai-chat-bot-vjit-1.streamlit.app/?embed=true";
+        document.getElementById('app-frame').onload = function() {
+            document.getElementById('app-frame').style.display = "block";
+            document.getElementById('loading').style.display = "none";
+        };
     </script>
 </body>
 </html>
