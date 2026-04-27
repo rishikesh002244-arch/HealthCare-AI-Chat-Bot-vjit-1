@@ -158,6 +158,8 @@ def _load_runtime_model():
 
 
 _load_runtime_model()
+if not SYMPTOMS_LIST and MODEL_COLUMNS:
+    SYMPTOMS_LIST = list(MODEL_COLUMNS)
 
 
 # ── FastAPI app ──────────────────────────────────────────────────────────────
