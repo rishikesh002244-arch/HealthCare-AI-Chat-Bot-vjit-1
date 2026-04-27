@@ -99,6 +99,11 @@ function App() {
   const [error, setError] = useState(null);
 
   const t = UI_STRINGS[lang] || UI_STRINGS.en;
+  const confidenceColorMap = {
+    high: '#00f08f',
+    medium: '#f6c945',
+    low: '#ff4b4b'
+  };
 
   useEffect(() => {
     const initApp = async () => {
@@ -134,6 +139,16 @@ function App() {
     setSuggestions([]);
   };
 
+  const addFreeTextSymptom = () => {
+    const input = searchTerm.trim().replace(/\s+/g, '_');
+    if (!input) return;
+    if (!selectedSymptoms.includes(input)) {
+      setSelectedSymptoms([...selectedSymptoms, input]);
+    }
+    setSearchTerm('');
+    setSuggestions([]);
+  };
+
   const removeSymptom = (symptom) => {
     setSelectedSymptoms(selectedSymptoms.filter(s => s !== symptom));
   };
@@ -157,7 +172,8 @@ function App() {
         if (el) el.scrollIntoView({ behavior: 'smooth' });
       }, 800);
     } catch (err) {
-      setError("Analysis failed. Please try again.");
+      const detail = err?.response?.data?.detail;
+      setError(detail || "Analysis failed. Please try again.");
       setIsDiagnosing(false);
     }
   };
@@ -252,6 +268,12 @@ function App() {
                   }}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addFreeTextSymptom();
+                    }
+                  }}
                 />
                 <Search size={16} style={{ position: 'absolute', left: '12px', top: '13px', color: '#737373' }} />
                 
@@ -294,8 +316,19 @@ function App() {
             {result && (
               <motion.div className="result-container" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
                 <div className="result-header" style={{ borderTop: '4px solid #00f08f' }}>
+                  {result.red_flags?.length > 0 && (
+                    <div className="urgent-alert">
+                      <strong>Urgent warning:</strong>
+                      <ul className="info-list" style={{ marginTop: '8px' }}>
+                        {result.red_flags.map((alert, i) => <li key={i}>{alert}</li>)}
+                      </ul>
+                    </div>
+                  )}
                   <div className="result-disease" style={{ fontSize: '26px', color: '#00f08f', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: '800' }}>
                     {result.disease}
+                  </div>
+                  <div className="confidence-pill" style={{ borderColor: confidenceColorMap[result.confidence_bucket] || '#00f08f' }}>
+                    Confidence: {(result.confidence_bucket || 'medium').toUpperCase()} ({Math.round((result.confidence || 0) * 100)}%)
                   </div>
                   {result.description && (
                     <p style={{ margin: '16px 0 0 0', fontSize: '14px', color: '#ccc', lineHeight: '1.5' }}>
@@ -303,6 +336,21 @@ function App() {
                     </p>
                   )}
                 </div>
+
+                {result.possible_conditions?.length > 0 && (
+                  <div className="ranked-card">
+                    <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#a8a8a8' }}>
+                      Top likely conditions
+                    </h4>
+                    <ul className="info-list">
+                      {result.possible_conditions.map((cond, i) => (
+                        <li key={i}>
+                          {cond.disease} - {Math.round((cond.confidence || 0) * 100)}%
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 <div className="info-section">
                   <div className="info-card">
