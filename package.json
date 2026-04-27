@@ -1,0 +1,10 @@
+{
+  "name": "healthcare-ai-all-in-one",
+  "version": "1.0.0",
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "uvicorn api.index:app --reload",
+    "build": "cd frontend && npm install && npm run build",
+    "install:all": "npm install && cd frontend && npm install"
+  }
+}

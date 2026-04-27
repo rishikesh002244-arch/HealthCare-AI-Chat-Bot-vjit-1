@@ -1,5 +1,9 @@
-streamlit
+fastapi
+uvicorn
 pandas
 scikit-learn
 numpy
 requests
+pydantic
+python-multipart
+deep-translator
