@@ -4,8 +4,7 @@ import traceback
 import pickle
 import json
 import re
-import numpy as np
-import pandas as pd
+import csv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -129,14 +128,25 @@ def _resolve_symptom_alias(symptom: str) -> str:
 def _load_runtime_model():
     global MODEL_COLUMNS, MODEL_SYMPTOM_ALIAS, MODEL_COL_INDEX, TRAIN_X, TRAIN_Y
     try:
-        df = pd.read_csv(DATA_PATH)
-        X = df.iloc[:, :-1]
-        y = df["prognosis"]
-        MODEL_COLUMNS = list(X.columns)
+        with open(DATA_PATH, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            fieldnames = reader.fieldnames or []
+            if "prognosis" not in fieldnames:
+                raise RuntimeError("Training data missing prognosis column")
+
+            MODEL_COLUMNS = [c for c in fieldnames if c != "prognosis"]
+            rows = list(reader)
+
+        if not rows:
+            raise RuntimeError("Training data is empty")
+
         MODEL_SYMPTOM_ALIAS = {_normalize_symptom_name(col): col for col in MODEL_COLUMNS}
         MODEL_COL_INDEX = {col: idx for idx, col in enumerate(MODEL_COLUMNS)}
-        TRAIN_X = X.values.astype(np.int8)
-        TRAIN_Y = y.values
+        TRAIN_X = []
+        TRAIN_Y = []
+        for row in rows:
+            TRAIN_X.append([1 if str(row.get(col, "0")).strip() == "1" else 0 for col in MODEL_COLUMNS])
+            TRAIN_Y.append(str(row.get("prognosis", "")).strip())
     except Exception as e:
         print(f"[STARTUP ERROR] Failed to train runtime model: {e}")
         traceback.print_exc()
@@ -170,7 +180,7 @@ def _predict(symptoms_input: List[str]):
     if TRAIN_X is None or TRAIN_Y is None or not MODEL_COLUMNS:
         raise RuntimeError("Prediction model is unavailable")
 
-    vec = np.zeros(len(MODEL_COLUMNS))
+    vec = [0] * len(MODEL_COLUMNS)
     known_matches = 0
     normalized_inputs = []
     for symptom in symptoms_input:
@@ -184,16 +194,17 @@ def _predict(symptoms_input: List[str]):
     if known_matches == 0:
         raise ValueError("No known symptoms matched the model vocabulary")
 
-    input_count = int(vec.sum())
-    row_overlap = np.dot(TRAIN_X, vec)
-    nonzero_mask = row_overlap > 0
-    if not np.any(nonzero_mask):
+    input_count = int(sum(vec))
+    row_overlap = [sum(x_val and v_val for x_val, v_val in zip(row, vec)) for row in TRAIN_X]
+    if not any(score > 0 for score in row_overlap):
         raise ValueError("Could not match the provided symptoms to known conditions")
 
-    row_symptom_counts = TRAIN_X.sum(axis=1)
-    precision = row_overlap / max(input_count, 1)
-    recall = row_overlap / np.maximum(row_symptom_counts, 1)
-    scores = 0.7 * precision + 0.3 * recall
+    row_symptom_counts = [sum(row) for row in TRAIN_X]
+    scores = []
+    for overlap, row_count in zip(row_overlap, row_symptom_counts):
+        precision = overlap / max(input_count, 1)
+        recall = overlap / max(row_count, 1)
+        scores.append(0.7 * precision + 0.3 * recall)
 
     disease_best_score = {}
     for idx, disease in enumerate(TRAIN_Y):
