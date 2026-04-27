@@ -337,21 +337,6 @@ function App() {
                   )}
                 </div>
 
-                {result.possible_conditions?.length > 0 && (
-                  <div className="ranked-card">
-                    <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#a8a8a8' }}>
-                      Top likely conditions
-                    </h4>
-                    <ul className="info-list">
-                      {result.possible_conditions.map((cond, i) => (
-                        <li key={i}>
-                          {cond.disease} - {Math.round((cond.confidence || 0) * 100)}%
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
                 <div className="info-section">
                   <div className="info-card">
                     <h4><ShieldAlert size={14} color="#ff4b4b" /> {t.precautions}</h4>

@@ -300,7 +300,7 @@ def predict(req: DiagnosisRequest):
     confidence_bucket = pred["confidence_bucket"]
     known_matches = pred["known_matches"]
     normalized_inputs = set(pred["normalized_inputs"])
-    is_uncertain = confidence_bucket == "low" or known_matches < 2
+    is_uncertain = confidence_bucket == "low"
 
     precs = DISEASE_PRECAUTIONS.get(disease) or [
         p for p in _precaution_pkl.get(disease, []) if p and p.strip()
@@ -316,10 +316,7 @@ def predict(req: DiagnosisRequest):
             red_flag_alerts.append(rule["message"])
 
     if is_uncertain:
-        desc = (
-            "The symptom match is not strong enough for a reliable disease-specific result. "
-            "Please consult a qualified doctor for confirmation."
-        )
+        desc = _descriptions.get(disease, "")
         precs = list(LOW_CONFIDENCE_PRECAUTIONS)
         # On low confidence we avoid disease-specific remedy-like claims.
         rems = list(SAFE_SELF_CARE_REMEDIES)
