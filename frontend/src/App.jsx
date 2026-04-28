@@ -8,8 +8,6 @@ import {
   Home, 
   Globe, 
   AlertCircle,
-  Heart,
-  MessageCircle,
   Send,
   Languages
 } from 'lucide-react';
@@ -227,8 +225,6 @@ function App() {
               {LANGUAGES.map(l => <option key={l.code} value={l.code} style={{ background: '#121212' }}>{l.name}</option>)}
             </select>
           </div>
-          <Heart size={20} cursor="pointer" />
-          <MessageCircle size={20} cursor="pointer" />
         </div>
       </header>
 
