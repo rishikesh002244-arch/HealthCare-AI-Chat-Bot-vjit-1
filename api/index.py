@@ -29,9 +29,12 @@ DATA_PATH  = os.path.join(ROOT_DIR, "healthcare-chatbot", "Data", "Training.csv"
 # ── Inline medical data (no import needed — avoids module resolution issues) ─
 # We load it directly from the file to avoid import problems on Vercel
 _medical_data_path = os.path.join(API_DIR, "medical_data.py")
+_symptom_data_path = os.path.join(API_DIR, "symptom_data.py")
 DISEASE_REMEDIES = {}
 DISEASE_PRECAUTIONS = {}
 SEARCH_NAME_MAP = {}
+SYMPTOM_REMEDIES = {}
+SYMPTOM_PRECAUTIONS = {}
 MODEL_COLUMNS = []
 MODEL_SYMPTOM_ALIAS = {}
 MODEL_COL_INDEX = {}
@@ -96,6 +99,14 @@ if os.path.exists(_medical_data_path):
     DISEASE_REMEDIES = _ns.get("DISEASE_REMEDIES", {})
     DISEASE_PRECAUTIONS = _ns.get("DISEASE_PRECAUTIONS", {})
     SEARCH_NAME_MAP = _ns.get("SEARCH_NAME_MAP", {})
+
+# Execute symptom_data.py to get symptom-based advice
+if os.path.exists(_symptom_data_path):
+    _sn = {}
+    with open(_symptom_data_path, "r", encoding="utf-8") as f:
+        exec(f.read(), _sn)
+    SYMPTOM_REMEDIES = _sn.get("SYMPTOM_REMEDIES", {})
+    SYMPTOM_PRECAUTIONS = _sn.get("SYMPTOM_PRECAUTIONS", {})
 
 # ── Load model data ──────────────────────────────────────────────────────────
 try:
@@ -287,65 +298,52 @@ def predict(req: DiagnosisRequest):
     if not req.symptoms:
         raise HTTPException(400, "No symptoms provided")
 
-    try:
-        pred = _predict(req.symptoms)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(500, f"Prediction error: {e}")
+    # Resolve and normalize input symptoms
+    normalized_inputs = []
+    for s in req.symptoms:
+        normalized_inputs.append(_resolve_symptom_alias(s))
+    normalized_set = set(normalized_inputs)
 
-    disease = pred["top_disease"]
-    confidence = pred["confidence"]
-    confidence_bucket = pred["confidence_bucket"]
-    known_matches = pred["known_matches"]
-    normalized_inputs = set(pred["normalized_inputs"])
-    is_uncertain = confidence_bucket == "low"
+    # ── Build symptom-based remedies and precautions ──────────────────────────
+    # Aggregate advice from each matched symptom (deduplicated, max 5 each)
+    seen_rem = set()
+    seen_prec = set()
+    aggregated_remedies = []
+    aggregated_precautions = []
 
-    precs = DISEASE_PRECAUTIONS.get(disease) or [
-        p for p in _precaution_pkl.get(disease, []) if p and p.strip()
-    ]
-    rems = list(SAFE_SELF_CARE_REMEDIES)
-    desc = _descriptions.get(disease, "")
+    for sym in normalized_inputs:
+        for item in SYMPTOM_REMEDIES.get(sym, []):
+            if item not in seen_rem:
+                seen_rem.add(item)
+                aggregated_remedies.append(item)
+        for item in SYMPTOM_PRECAUTIONS.get(sym, []):
+            if item not in seen_prec:
+                seen_prec.add(item)
+                aggregated_precautions.append(item)
+
+    # Limit to 5 per section to keep output clean
+    aggregated_remedies = aggregated_remedies[:5]
+    aggregated_precautions = aggregated_precautions[:5]
+
+    # ── Red flag detection ────────────────────────────────────────────────────
     red_flag_alerts = []
-
     for rule in RED_FLAG_RULES:
-        required_ok = rule["required"].issubset(normalized_inputs)
-        any_ok = not rule["any_of"] or bool(rule["any_of"].intersection(normalized_inputs))
+        required_ok = rule["required"].issubset(normalized_set)
+        any_ok = not rule["any_of"] or bool(rule["any_of"].intersection(normalized_set))
         if required_ok and any_ok:
             red_flag_alerts.append(rule["message"])
 
-    if is_uncertain:
-        desc = _descriptions.get(disease, "")
-        precs = list(LOW_CONFIDENCE_PRECAUTIONS)
-        # On low confidence we avoid disease-specific remedy-like claims.
-        rems = list(SAFE_SELF_CARE_REMEDIES)
-    else:
-        if not precs:
-            precs = [
-                "Follow a doctor-approved treatment plan for this condition.",
-                "Monitor symptom changes and report worsening signs early.",
-            ]
+    # ── Fallback to generic safe-care if no symptom data matched ──────────────
+    if not aggregated_remedies:
+        aggregated_remedies = list(SAFE_SELF_CARE_REMEDIES)
+    if not aggregated_precautions:
+        aggregated_precautions = list(LOW_CONFIDENCE_PRECAUTIONS)
 
     lang = req.lang or "en"
-    localized_red_flags = _tr_list(red_flag_alerts, lang)
     return {
-        "disease":     _tr(SEARCH_NAME_MAP.get(disease, disease), lang),
-        "description": _tr(desc, lang),
-        "precautions": _tr_list(precs, lang),
-        "remedies":    _tr_list(rems, lang),
-        "confidence": confidence,
-        "confidence_bucket": confidence_bucket,
-        "matched_symptoms": known_matches,
-        "uncertain": is_uncertain,
-        "red_flags": localized_red_flags,
-        "possible_conditions": [
-            {
-                "disease": _tr(SEARCH_NAME_MAP.get(p["disease"], p["disease"]), lang),
-                "confidence": p["confidence"],
-            }
-            for p in pred["ranked_predictions"]
-        ],
+        "precautions": _tr_list(aggregated_precautions, lang),
+        "remedies":    _tr_list(aggregated_remedies, lang),
+        "red_flags":   _tr_list(red_flag_alerts, lang),
     }
 
 

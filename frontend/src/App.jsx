@@ -233,17 +233,6 @@ function App() {
       </header>
 
       <main className="main-feed">
-        <section className="stories-container">
-          {HEALTH_TIPS.map(tip => (
-            <div key={tip.id} className="story-item" onClick={() => setShowStory(tip)} style={{ cursor: 'pointer' }}>
-              <div className="story-circle">
-                <div className="story-inner">{tip.icon}</div>
-              </div>
-              <span className="story-name">{tip.name}</span>
-            </div>
-          ))}
-        </section>
-
         <motion.div className="diag-card" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}>
           <div className="diag-title">
             <Activity size={18} color="#0095f6" />
@@ -315,29 +304,7 @@ function App() {
           <AnimatePresence>
             {result && (
               <motion.div className="result-container" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-                <div className="result-header" style={{ borderTop: '4px solid #00f08f' }}>
-                  {result.red_flags?.length > 0 && (
-                    <div className="urgent-alert">
-                      <strong>Urgent warning:</strong>
-                      <ul className="info-list" style={{ marginTop: '8px' }}>
-                        {result.red_flags.map((alert, i) => <li key={i}>{alert}</li>)}
-                      </ul>
-                    </div>
-                  )}
-                  <div className="result-disease" style={{ fontSize: '26px', color: '#00f08f', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: '800' }}>
-                    {result.disease}
-                  </div>
-                  <div className="confidence-pill" style={{ borderColor: confidenceColorMap[result.confidence_bucket] || '#00f08f' }}>
-                    Confidence: {(result.confidence_bucket || 'medium').toUpperCase()} ({Math.round((result.confidence || 0) * 100)}%)
-                  </div>
-                  {result.description && (
-                    <p style={{ margin: '16px 0 0 0', fontSize: '14px', color: '#ccc', lineHeight: '1.5' }}>
-                      {result.description}
-                    </p>
-                  )}
-                </div>
-
-                <div className="info-section">
+                  <div className="info-section">
                   <div className="info-card">
                     <h4><ShieldAlert size={14} color="#ff4b4b" /> {t.precautions}</h4>
                     <ul className="info-list">
@@ -357,15 +324,6 @@ function App() {
           </AnimatePresence>
         </div>
 
-        <footer className="disclaimer">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '12px' }}>
-            <AlertCircle size={20} color="#ff4b4b" />
-            <strong style={{ fontSize: '18px', color: '#ff4b4b' }}>{t.disclaimer_title}</strong>
-          </div>
-          <p>{t.disclaimer_p1}</p>
-          <p style={{ marginTop: '12px' }}>{t.disclaimer_p2}</p>
-          <div style={{ marginTop: '32px', opacity: 0.3, fontSize: '10px' }}>PROCESSED BY {t.title.toUpperCase()} • VERCEL SECURE</div>
-        </footer>
       </main>
 
       <AnimatePresence>
